@@ -3,7 +3,7 @@ SHELL=/bin/bash
 
 # Identifies the current build.
 # These will be embedded in the app and displayed when it starts.
-VERSION ?= v0.67.0
+VERSION ?= v0.63.0-SNAPSHOT
 COMMIT_HASH ?= $(shell git rev-parse HEAD)
 
 # Indicates which version of the UI console is to be embedded
@@ -13,7 +13,7 @@ COMMIT_HASH ?= $(shell git rev-parse HEAD)
 # WARNING: If you have previously run the 'docker' target but
 # later want to change the CONSOLE_VERSION then you must run
 # the 'clean' target first before re-running the 'docker' target.
-CONSOLE_VERSION ?= 0.67.0
+CONSOLE_VERSION ?= 0.61.0
 CONSOLE_LOCAL_DIR ?= ../../../../../kiali-ui
 
 # External Services Configuration
@@ -211,25 +211,8 @@ swagger-travis: swagger-validate
 # cloud targets - building images and deploying
 #
 
-.get-console:
-	@mkdir -p _output/docker
-ifeq ("${CONSOLE_VERSION}", "local")
-	echo "Copying local console files from ${CONSOLE_LOCAL_DIR}"
-	rm -rf _output/docker/console && mkdir _output/docker/console
-	cp -r ${CONSOLE_LOCAL_DIR}/build/* _output/docker/console
-	@echo "$$(cd ${CONSOLE_LOCAL_DIR} && npm view ${CONSOLE_LOCAL_DIR} version)-local-$$(cd ${CONSOLE_LOCAL_DIR} && git rev-parse HEAD)" > _output/docker/console/version.txt
-else
-	@if [ ! -d "_output/docker/console" ]; then \
-		echo "Downloading console (${CONSOLE_VERSION})..." && \
-		mkdir _output/docker/console && \
-		curl $$(npm view @kiali/kiali-ui@${CONSOLE_VERSION} dist.tarball) \
-		| tar zxf - --strip-components=2 --directory _output/docker/console package/build && \
-		echo "$$(npm view @kiali/kiali-ui@${CONSOLE_VERSION} version)" > _output/docker/console/version.txt ;\
-	fi
-endif
-	@echo "Console version being packaged: $$(cat _output/docker/console/version.txt)"
-
-.prepare-docker-image-files: .get-console
+.prepare-docker-image-files:
+	@CONSOLE_VERSION=${CONSOLE_VERSION} CONSOLE_LOCAL_DIR=${CONSOLE_LOCAL_DIR} deploy/get-console.sh
 	@echo Preparing docker image files...
 	@mkdir -p _output/docker
 	@cp -r deploy/docker/* _output/docker
@@ -268,16 +251,20 @@ docker-push:
 
 ## openshift-deploy: Deploy docker image in Openshift project.
 openshift-deploy: openshift-undeploy
-	@if ! which envsubst > /dev/null 2>&1; then echo "You are missing 'envsubst'. Please install it and retry. If on MacOS, you can get this by installing the gettext package"; exit 1; fi
-	@echo Deploying to OpenShift project ${NAMESPACE}
-	cat deploy/openshift/kiali-configmap.yaml | VERSION_LABEL=${VERSION_LABEL} JAEGER_URL=${JAEGER_URL} GRAFANA_URL=${GRAFANA_URL} envsubst | ${OC} create -n ${NAMESPACE} -f -
-	cat deploy/openshift/kiali-secrets.yaml | VERSION_LABEL=${VERSION_LABEL} envsubst | ${OC} create -n ${NAMESPACE} -f -
-	cat deploy/openshift/kiali.yaml | IMAGE_NAME=${DOCKER_NAME} IMAGE_VERSION=${DOCKER_VERSION} NAMESPACE=${NAMESPACE} VERSION_LABEL=${VERSION_LABEL} VERBOSE_MODE=${VERBOSE_MODE} IMAGE_PULL_POLICY_TOKEN=${IMAGE_PULL_POLICY_TOKEN} envsubst | ${OC} create -n ${NAMESPACE} -f -
+	IMAGE_NAME="${DOCKER_NAME}" \
+IMAGE_VERSION="${DOCKER_VERSION}" \
+IMAGE_PULL_POLICY_TOKEN=${IMAGE_PULL_POLICY_TOKEN} \
+VERSION_LABEL="${VERSION_LABEL}" \
+NAMESPACE="${NAMESPACE}" \
+JAEGER_URL="${JAEGER_URL}" \
+GRAFANA_URL="${GRAFANA_URL}"  \
+VERBOSE_MODE="${VERBOSE_MODE}" \
+deploy/openshift/deploy-kiali-to-openshift.sh
 
 ## openshift-undeploy: Undeploy from Openshift project.
 openshift-undeploy: .openshift-validate
 	@echo Undeploying from OpenShift project ${NAMESPACE}
-	${OC} delete all,secrets,sa,templates,configmaps,deployments,clusterroles,clusterrolebindings,virtualservices,destinationrules --selector=app=kiali -n ${NAMESPACE}
+	${OC} delete all,secrets,sa,templates,configmaps,deployments,clusterroles,clusterrolebindings,virtualservices,destinationrules,ingresses --selector=app=kiali -n ${NAMESPACE}
 
 ## openshift-reload-image: Refreshing image in Openshift project.
 openshift-reload-image: .openshift-validate
@@ -290,11 +277,15 @@ openshift-reload-image: .openshift-validate
 
 ## k8s-deploy: Deploy docker image in Kubernetes namespace.
 k8s-deploy: k8s-undeploy
-	@if ! which envsubst > /dev/null 2>&1; then echo "You are missing 'envsubst'. Please install it and retry. If on MacOS, you can get this by installing the gettext package"; exit 1; fi
-	@echo Deploying to Kubernetes namespace ${NAMESPACE}
-	cat deploy/kubernetes/kiali-configmap.yaml | VERSION_LABEL=${VERSION_LABEL} JAEGER_URL=${JAEGER_URL} GRAFANA_URL=${GRAFANA_URL} envsubst | ${KUBECTL} create -n ${NAMESPACE} -f -
-	cat deploy/kubernetes/kiali-secrets.yaml | VERSION_LABEL=${VERSION_LABEL} envsubst | ${KUBECTL} create -n ${NAMESPACE} -f -
-	cat deploy/kubernetes/kiali.yaml | IMAGE_NAME=${DOCKER_NAME} IMAGE_VERSION=${DOCKER_VERSION} NAMESPACE=${NAMESPACE} VERSION_LABEL=${VERSION_LABEL} VERBOSE_MODE=${VERBOSE_MODE} IMAGE_PULL_POLICY_TOKEN=${IMAGE_PULL_POLICY_TOKEN} envsubst | ${KUBECTL} create -n ${NAMESPACE} -f -
+	IMAGE_NAME="${DOCKER_NAME}" \
+IMAGE_VERSION="${DOCKER_VERSION}" \
+IMAGE_PULL_POLICY_TOKEN=${IMAGE_PULL_POLICY_TOKEN} \
+VERSION_LABEL="${VERSION_LABEL}" \
+NAMESPACE="${NAMESPACE}" \
+JAEGER_URL="${JAEGER_URL}" \
+GRAFANA_URL="${GRAFANA_URL}"  \
+VERBOSE_MODE="${VERBOSE_MODE}" \
+deploy/kubernetes/deploy-kiali-to-kubernetes.sh
 
 ## k8s-undeploy: Undeploy docker image in Kubernetes namespace.
 k8s-undeploy: .k8s-validate
