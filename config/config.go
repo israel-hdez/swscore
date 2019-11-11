@@ -45,6 +45,8 @@ const (
 	AuthStrategyLoginIssuer     = "kiali-login"
 
 	// These constants are used for external services auth (Prometheus, Grafana ...) ; not for Kiali auth
+	// If you need to add more, make sure to update the schema of the operator crd:
+	//   $/operator/deploy/crd.yaml, the deployment.external_services property
 	AuthTypeBasic  = "basic"
 	AuthTypeBearer = "bearer"
 	AuthTypeNone   = "none"

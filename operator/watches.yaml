@@ -1,5 +1,5 @@
 ---
-- version: v1alpha1
+- version: v1
   group: kiali.io
   kind: Kiali
   playbook: /opt/ansible/playbooks/kiali-deploy.yml
